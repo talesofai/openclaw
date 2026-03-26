@@ -1,4 +1,4 @@
-import { ChannelType, MessageType, type User } from "@buape/carbon";
+import { ChannelType, MessageType } from "@buape/carbon";
 import { hasControlCommand } from "../../auto-reply/command-detection.js";
 import { shouldHandleTextCommands } from "../../auto-reply/commands-registry.js";
 import {
@@ -101,6 +101,58 @@ export function shouldIgnoreBoundThreadWebhookMessage(params: {
     });
   }
   return webhookId === boundWebhookId;
+}
+
+type DiscordRawMention = {
+  id?: unknown;
+};
+
+type DiscordRawMessageFields = {
+  mention_everyone?: unknown;
+  mention_roles?: unknown;
+  mentions?: unknown;
+};
+
+function resolveDiscordMentionedUserIds(message: import("@buape/carbon").Message): Set<string> {
+  const ids = new Set<string>();
+  for (const user of message.mentionedUsers ?? []) {
+    const id = user?.id?.trim();
+    if (id) {
+      ids.add(id);
+    }
+  }
+  const rawData = (message as { rawData?: DiscordRawMessageFields }).rawData;
+  const rawMentions = Array.isArray(rawData?.mentions) ? rawData.mentions : [];
+  for (const entry of rawMentions) {
+    const id = (entry as DiscordRawMention | null | undefined)?.id;
+    if (typeof id === "string" && id.trim()) {
+      ids.add(id.trim());
+    }
+  }
+  return ids;
+}
+
+function resolveDiscordMentionedRoleCount(message: import("@buape/carbon").Message): number {
+  const rawData = (message as { rawData?: DiscordRawMessageFields }).rawData;
+  const rawMentionRoles = Array.isArray(rawData?.mention_roles) ? rawData.mention_roles : [];
+  return Math.max(message.mentionedRoles?.length ?? 0, rawMentionRoles.length);
+}
+
+function resolveDiscordMentionEveryone(message: import("@buape/carbon").Message): boolean {
+  const rawData = (message as { rawData?: DiscordRawMessageFields }).rawData;
+  return message.mentionedEveryone || rawData?.mention_everyone === true;
+}
+
+function hasDirectDiscordUserMention(content: string, botId?: string | null): boolean {
+  const normalizedBotId = botId?.trim();
+  if (!normalizedBotId) {
+    return false;
+  }
+  return content.includes(`<@${normalizedBotId}>`) || content.includes(`<@!${normalizedBotId}>`);
+}
+
+function hasAnyDiscordMentionToken(content: string): boolean {
+  return /<@!?\d+>|<@&\d+>|@everyone\b|@here\b/i.test(content);
 }
 
 export async function preflightDiscordMessage(
@@ -320,14 +372,20 @@ export async function preflightDiscordMessage(
       }
     : route;
   const mentionRegexes = buildMentionRegexes(params.cfg, effectiveRoute.agentId);
+  const mentionedUserIds = resolveDiscordMentionedUserIds(message);
   const explicitlyMentioned = Boolean(
-    botId && message.mentionedUsers?.some((user: User) => user.id === botId),
+    botId &&
+    (mentionedUserIds.has(botId) ||
+      hasDirectDiscordUserMention(message.content ?? "", botId) ||
+      hasDirectDiscordUserMention(baseText, botId)),
   );
   const hasAnyMention = Boolean(
     !isDirectMessage &&
-    (message.mentionedEveryone ||
-      (message.mentionedUsers?.length ?? 0) > 0 ||
-      (message.mentionedRoles?.length ?? 0) > 0),
+    (resolveDiscordMentionEveryone(message) ||
+      mentionedUserIds.size > 0 ||
+      resolveDiscordMentionedRoleCount(message) > 0 ||
+      hasAnyDiscordMentionToken(message.content ?? "") ||
+      hasAnyDiscordMentionToken(baseText)),
   );
 
   if (

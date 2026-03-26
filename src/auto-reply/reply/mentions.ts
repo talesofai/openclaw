@@ -102,7 +102,7 @@ export function matchesMentionWithExplicit(params: {
   const textToCheck = cleaned || transcriptCleaned;
 
   if (hasAnyMention && explicitAvailable) {
-    return explicit;
+    return explicit || params.mentionRegexes.some((re) => re.test(textToCheck));
   }
   if (!textToCheck) {
     return explicit;

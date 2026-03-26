@@ -21,7 +21,7 @@ describe("matchesMentionWithExplicit", () => {
   it("combines explicit-mention state with regex fallback rules", () => {
     const cases = [
       {
-        name: "regex match with explicit resolver available",
+        name: "does not fall back to regex when another explicit mention is present",
         text: "@openclaw hello",
         mentionRegexes,
         explicit: {
@@ -29,7 +29,7 @@ describe("matchesMentionWithExplicit", () => {
           isExplicitlyMentioned: false,
           canResolveExplicit: true,
         },
-        expected: true,
+        expected: false,
       },
       {
         name: "no explicit and no regex match",
@@ -56,6 +56,17 @@ describe("matchesMentionWithExplicit", () => {
       {
         name: "falls back to regex when explicit cannot resolve",
         text: "openclaw please",
+        mentionRegexes,
+        explicit: {
+          hasAnyMention: true,
+          isExplicitlyMentioned: false,
+          canResolveExplicit: false,
+        },
+        expected: true,
+      },
+      {
+        name: "falls back to regex when explicit mention data is unavailable",
+        text: "@openclaw hello",
         mentionRegexes,
         explicit: {
           hasAnyMention: true,

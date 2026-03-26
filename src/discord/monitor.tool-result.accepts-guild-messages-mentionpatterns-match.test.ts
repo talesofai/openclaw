@@ -293,6 +293,41 @@ describe("discord tool result dispatch", () => {
   );
 
   it(
+    "does not dispatch when another bot is explicitly mentioned even if mentionPatterns match",
+    async () => {
+      const cfg = createMentionRequiredGuildConfig({
+        messages: {
+          responsePrefix: "PFX",
+          groupChat: { mentionPatterns: ["\\bopenclaw\\b"] },
+        },
+      });
+
+      const handler = await createHandler(cfg);
+      const client = createGuildTextClient();
+
+      await handler(
+        createGuildMessageEvent({
+          messageId: "m2-other-bot",
+          content: "<@other-bot> openclaw hello",
+          messagePatch: {
+            mentionedUsers: [{ id: "other-bot" }],
+            rawData: {
+              mentions: [{ id: "other-bot" }],
+              mention_roles: [],
+              mention_everyone: false,
+            },
+          },
+        }),
+        client,
+      );
+
+      expect(dispatchMock).not.toHaveBeenCalled();
+      expect(sendMock).not.toHaveBeenCalled();
+    },
+    MENTION_PATTERNS_TEST_TIMEOUT_MS,
+  );
+
+  it(
     "skips tool results for native slash commands",
     { timeout: MENTION_PATTERNS_TEST_TIMEOUT_MS },
     async () => {
